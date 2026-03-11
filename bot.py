@@ -124,6 +124,9 @@ class BookingState(StatesGroup):
     entering_guests = State()
     confirming = State()
 
+class LeadState(StatesGroup):
+    waiting_description = State()
+
 
 # ─── КЛАВИАТУРЫ ──────────────────────────────────────────────────────────────
 
@@ -136,6 +139,7 @@ def main_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🌟 Акция дня", callback_data="special")],
         [InlineKeyboardButton(text="📅 Забронировать столик", callback_data="book:start")],
         [InlineKeyboardButton(text="❓ Задать вопрос", callback_data="ask")],
+        [InlineKeyboardButton(text="💼 Хочу такой бот для своего бизнеса", callback_data="lead")],
     ])
 
 
@@ -188,7 +192,8 @@ async def cmd_start(message: Message, state: FSMContext):
         "• Узнать об акциях\n"
         "• Ответить на любые вопросы\n\n"
         f"{DAILY_SPECIAL}\n\n"
-        "Выберите, что вас интересует:",
+        "Выберите, что вас интересует:\n\n"
+        "_Хотите такого бота для своего бизнеса? → «💼 Хочу такой бот»_",
         parse_mode="Markdown",
         reply_markup=main_menu(),
     )
@@ -437,6 +442,55 @@ def _fallback_answer(text: str) -> str:
     return (
         "Спасибо за вопрос! ☕ Для быстрого ответа нажмите «Забронировать столик» "
         "или выберите раздел в меню — я помогу с любым вопросом."
+    )
+
+
+# ─── ЗАХВАТ ЛИДОВ ────────────────────────────────────────────────────────────
+
+@dp.callback_query(F.data == "lead")
+async def cb_lead_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(LeadState.waiting_description)
+    await callback.message.edit_text(
+        "💼 *Хотите такого бота для своего бизнеса?*\n\n"
+        "Этот бот сделан за 5 дней на Python + ИИ.\n\n"
+        "Расскажите кратко:\n"
+        "• Чем занимается ваш бизнес?\n"
+        "• Что должен делать бот?\n\n"
+        "Я передам запрос разработчику — он пришлёт расчёт:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Отмена", callback_data="menu")]
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.message(LeadState.waiting_description)
+async def lead_description(message: Message, state: FSMContext):
+    await state.clear()
+    user = message.from_user
+    username = f"@{user.username}" if user.username else f"id{user.id}"
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "Без имени"
+
+    owner_text = (
+        f"🔥 Новый лид — @ZasCafeBot (кафе)!\n\n"
+        f"👤 {full_name} ({username})\n"
+        f"🔗 Написать: tg://user?id={user.id}\n\n"
+        f"📝 Задача:\n{message.text}"
+    )
+    try:
+        await bot.send_message(OWNER_ID, owner_text)
+    except Exception as e:
+        log.error(f"Lead notification failed: {e}")
+
+    await message.answer(
+        "✅ *Отлично! Запрос передан разработчику.*\n\n"
+        "Он свяжется с вами в ближайший час — обсудит детали и пришлёт точный расчёт стоимости.\n\n"
+        "_Разработка ботов от 25 000 ₽, срок 5-7 дней._",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Вернуться в меню", callback_data="menu")]
+        ]),
     )
 
 
